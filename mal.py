@@ -1,10 +1,11 @@
 import json
 import requests
 import secrets
+import os
 
 
-CLIENT_ID = 'YOUR CLIENT ID'
-CLIENT_SECRET = 'YOUR CLIENT SECRET'
+CLIENT_ID = ''
+CLIENT_SECRET = ''
 
 
 # 1. Generate a new Code Verifier / Code Challenge.
