@@ -1,5 +1,7 @@
 // Seiyuu Compare — anime voice actor comparison
 // Data source: AniList GraphQL API (https://docs.anilist.co/)
+// Build: v2 — characterMedia query must NOT pass `type:` (not a valid arg on Staff.characterMedia).
+//        Filter ANIME client-side via media.type === "ANIME".
 
 const ANILIST_URL = "https://graphql.anilist.co";
 
@@ -101,34 +103,43 @@ function setLoading(on) {
 
 // ---------- AniList ----------
 
-async function gql(query, variables) {
-    const res = await fetch(ANILIST_URL, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        },
-        body: JSON.stringify({ query, variables }),
-    });
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-    if (res.status === 429) {
-        const retryAfter = parseInt(res.headers.get("Retry-After") || "2", 10);
-        throw new Error(`Rate limited by AniList. Try again in ${retryAfter}s.`);
-    }
+async function gql(query, variables, { retries = 2 } = {}) {
+    for (let attempt = 0; ; attempt++) {
+        const res = await fetch(ANILIST_URL, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            body: JSON.stringify({ query, variables }),
+        });
 
-    // AniList returns a JSON body with detailed GraphQL errors even on 4xx.
-    // Parse first so we can surface the real message instead of a bare status code.
-    let json = null;
-    try { json = await res.json(); } catch (_) { /* non-JSON body */ }
+        // Honor AniList's rate limit: retry after Retry-After seconds before surfacing the error.
+        if (res.status === 429 && attempt < retries) {
+            const retryAfter = parseInt(res.headers.get("Retry-After") || "2", 10);
+            await sleep(Math.max(1, retryAfter) * 1000);
+            continue;
+        }
+        if (res.status === 429) {
+            const retryAfter = parseInt(res.headers.get("Retry-After") || "2", 10);
+            throw new Error(`Rate limited by AniList. Try again in ${retryAfter}s.`);
+        }
 
-    if (json && json.errors && json.errors.length) {
-        const msg = json.errors.map(e => e.message).filter(Boolean).join("; ");
-        throw new Error(msg || `AniList GraphQL error (HTTP ${res.status})`);
+        // AniList returns a JSON body with detailed GraphQL errors even on 4xx.
+        let json = null;
+        try { json = await res.json(); } catch (_) { /* non-JSON body */ }
+
+        if (json && json.errors && json.errors.length) {
+            const msg = json.errors.map(e => e.message).filter(Boolean).join("; ");
+            throw new Error(msg || `AniList GraphQL error (HTTP ${res.status})`);
+        }
+        if (!res.ok) {
+            throw new Error(`AniList HTTP ${res.status}`);
+        }
+        return json.data;
     }
-    if (!res.ok) {
-        throw new Error(`AniList HTTP ${res.status}`);
-    }
-    return json.data;
 }
 
 async function searchStaff(query) {
@@ -144,6 +155,9 @@ async function loadStaffRoles(id) {
     let page = 1;
     let hasNext = true;
 
+    const PER_PAGE = 25;
+    const THROTTLE_MS = 700; // keeps us well under AniList's 30 req/min when loading two VAs back-to-back
+
     while (hasNext && page <= MAX_PAGES) {
         const data = await gql(STAFF_QUERY, { id, page });
         const s = data.Staff;
@@ -157,7 +171,8 @@ async function loadStaffRoles(id) {
             siteUrl: s.siteUrl,
         };
 
-        for (const edge of s.characterMedia.edges) {
+        const edges = (s.characterMedia && s.characterMedia.edges) || [];
+        for (const edge of edges) {
             const media = edge.node;
             if (!media || media.type !== "ANIME") continue;
             if (!media.startDate || !media.startDate.year) continue;
@@ -177,8 +192,15 @@ async function loadStaffRoles(id) {
                 });
             }
         }
-        hasNext = s.characterMedia.pageInfo.hasNextPage;
+
+        // Stop as soon as AniList signals no more pages OR the current page came back short.
+        // Short-circuiting on short pages halves request count for most VAs and prevents
+        // rate-limit failures when the second voice actor is picked.
+        const pageInfo = (s.characterMedia && s.characterMedia.pageInfo) || {};
+        hasNext = !!pageInfo.hasNextPage && edges.length >= PER_PAGE;
         page += 1;
+
+        if (hasNext) await sleep(THROTTLE_MS);
     }
 
     // Deduplicate (same character + anime can repeat across pages occasionally)
