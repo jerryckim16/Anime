@@ -57,7 +57,13 @@ query ($id: Int, $page: Int) {
   }
 }`;
 
-const MAX_PAGES = 6; // hard cap: up to 300 character roles per VA (perPage=50)
+// Hard cap of 20 pages = up to 1000 character roles per VA. Only applies to
+// the live-fetch fallback (VAs not in the pre-baked top-500 manifest). Most
+// VAs short-circuit after 1–3 pages via hasNextPage; the cap only kicks in
+// for very prolific seiyuu, where we still walk back far enough to cover
+// their entire TV career. The pre-baked static files from scripts/prebake.mjs
+// go further (MAX_PAGES=40) since they run offline with no user waiting.
+const MAX_PAGES = 20;
 
 const state = {
     left: null,   // { staff, roles }

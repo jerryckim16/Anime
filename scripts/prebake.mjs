@@ -20,7 +20,7 @@
 //   ANILIST_APP_TOKEN — optional bearer token for higher rate limits
 //   TOP_N              — how many voice actors to enumerate by favourites (default 500)
 //   PER_PAGE           — page size (default 50, AniList max)
-//   MAX_PAGES          — cap per VA (default 6 → up to 300 roles)
+//   MAX_PAGES          — hard safety cap per VA (default 40 → 2000 roles; paginate until hasNextPage=false)
 //   THROTTLE_MS        — inter-request delay (default 1500 to stay well below the 30 req/min degraded limit)
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
@@ -36,7 +36,11 @@ const MANIFEST_FILE = resolve(REPO_ROOT, "data/va-manifest.json");
 const ANILIST_URL = "https://graphql.anilist.co";
 const TOP_N = parseInt(process.env.TOP_N || "500", 10);
 const PER_PAGE = parseInt(process.env.PER_PAGE || "50", 10);
-const MAX_PAGES = parseInt(process.env.MAX_PAGES || "6", 10);
+// Intentionally generous: the prebake walks the entire career, relying on
+// AniList's pageInfo.hasNextPage. MAX_PAGES is a runaway-loop safety net only.
+// Even the most prolific seiyuu (Tomokazu Sugita, Houko Kuwashima) are well
+// under 2000 character roles.
+const MAX_PAGES = parseInt(process.env.MAX_PAGES || "40", 10);
 const THROTTLE_MS = parseInt(process.env.THROTTLE_MS || "1500", 10);
 
 // Enumerates staff sorted by favourites so we can pick the top-N voice actors.
@@ -213,10 +217,17 @@ async function fetchVa(id) {
             }
         }
 
+        // Rely solely on AniList's canonical hasNextPage. The browser's
+        // loadStaffRoles uses an extra "edges.length >= PER_PAGE" guard to
+        // economize rate-limit budget, but the prebake runs offline and has
+        // no user waiting, so it walks the full career.
         const pageInfo = s.characterMedia?.pageInfo || {};
-        hasNext = !!pageInfo.hasNextPage && edges.length >= PER_PAGE;
+        hasNext = !!pageInfo.hasNextPage;
         page += 1;
         if (hasNext) await sleep(THROTTLE_MS);
+    }
+    if (hasNext) {
+        console.warn(`  hit MAX_PAGES=${MAX_PAGES} cap for staff ${id}; older roles may be truncated`);
     }
 
     // Dedupe (matches loadStaffRoles)
