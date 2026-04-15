@@ -3,143 +3,90 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Acme Startup • Modern Landing Page</title>
-    <style>
-        :root {
-            --primary: #6366f1;
-        }
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            background: linear-gradient(135deg, #f8fafc 0%, #e0e7ff 100%);
-            min-height: 100vh;
-        }
-        header {
-            background: white;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }
-        nav {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 1rem 2rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .logo {
-            font-size: 1.8rem;
-            font-weight: 700;
-            color: var(--primary);
-        }
-        .nav-links a {
-            margin-left: 2rem;
-            text-decoration: none;
-            color: #555;
-            font-weight: 500;
-        }
-        .hero {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 8rem 2rem 6rem;
-            text-align: center;
-        }
-        .hero h1 {
-            font-size: 3.5rem;
-            margin-bottom: 1rem;
-            color: #1e2937;
-        }
-        .hero p {
-            font-size: 1.3rem;
-            max-width: 600px;
-            margin: 0 auto 2rem;
-            color: #64748b;
-        }
-        .btn {
-            display: inline-block;
-            padding: 14px 32px;
-            background: var(--primary);
-            color: white;
-            border-radius: 50px;
-            text-decoration: none;
-            font-weight: 600;
-            font-size: 1.1rem;
-            transition: all 0.3s;
-        }
-        .btn:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 10px 20px rgba(99, 102, 241, 0.3);
-        }
-        .features {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 4rem 2rem;
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 2rem;
-        }
-        .card {
-            background: white;
-            padding: 2.5rem;
-            border-radius: 16px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
-            text-align: center;
-        }
-        footer {
-            text-align: center;
-            padding: 3rem 2rem;
-            background: #1e2937;
-            color: #cbd5e1;
-            margin-top: 4rem;
-        }
-    </style>
+    <title>Seiyuu Compare · Anime Voice Actor Timeline</title>
+    <meta name="description" content="Search and compare anime voice actors. Visualize their careers on a timeline and spot where two seiyuu crossed paths.">
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-
-    <header>
-        <nav>
-            <div class="logo">Acme</div>
-            <div class="nav-links">
-                <a href="#">Features</a>
-                <a href="#">Pricing</a>
-                <a href="#">Blog</a>
-                <a href="#">Contact</a>
-            </div>
-        </nav>
+    <header class="site-header">
+        <div class="container header-inner">
+            <a class="logo" href="#">
+                <span class="logo-mark">声</span>
+                <span class="logo-text">Seiyuu Compare</span>
+            </a>
+            <p class="tagline">Find where two voice actors crossed paths.</p>
+        </div>
     </header>
 
-    <section class="hero">
-        <h1>Build faster.<br>Ship smarter.</h1>
-        <p>The modern platform that helps teams launch beautiful products in record time.</p>
-        <a href="#" class="btn">Get Started Free →</a>
-    </section>
+    <main class="container">
+        <section class="intro">
+            <h1>Compare two anime voice actors</h1>
+            <p>Search for any seiyuu, pick two, and see their full career timelines side by side. Anime they both worked on are highlighted as overlaps.</p>
+        </section>
 
-    <section class="features">
-        <div class="card">
-            <h2>⚡ Lightning Fast</h2>
-            <p>Optimized performance out of the box. Your users will love the speed.</p>
-        </div>
-        <div class="card">
-            <h2>🎨 Beautiful Design</h2>
-            <p>Stunning interfaces that look professional without any design skills.</p>
-        </div>
-        <div class="card">
-            <h2>🔒 Secure by Default</h2>
-            <p>Enterprise-grade security so you can focus on building.</p>
-        </div>
-    </section>
+        <div id="error-banner" class="error-banner" role="alert" hidden></div>
 
-    <footer>
-        <p>&copy; 2026 Acme Inc. • This is a dummy website for demonstration</p>
+        <section class="compare-grid">
+            <article class="va-panel" data-side="left">
+                <header class="panel-head">
+                    <h2>Voice Actor 1</h2>
+                </header>
+                <div class="search-wrap">
+                    <input
+                        type="search"
+                        class="search-input"
+                        placeholder="Search a voice actor..."
+                        autocomplete="off"
+                        aria-label="Search voice actor 1">
+                    <ul class="search-results" hidden></ul>
+                </div>
+                <div class="va-card empty">
+                    <p class="empty-text">No voice actor selected yet.</p>
+                </div>
+            </article>
+
+            <article class="va-panel" data-side="right">
+                <header class="panel-head">
+                    <h2>Voice Actor 2</h2>
+                </header>
+                <div class="search-wrap">
+                    <input
+                        type="search"
+                        class="search-input"
+                        placeholder="Search a voice actor..."
+                        autocomplete="off"
+                        aria-label="Search voice actor 2">
+                    <ul class="search-results" hidden></ul>
+                </div>
+                <div class="va-card empty">
+                    <p class="empty-text">No voice actor selected yet.</p>
+                </div>
+            </article>
+        </section>
+
+        <section id="timeline-section" class="timeline-section" hidden>
+            <header class="timeline-head">
+                <h2>Career Timeline</h2>
+                <div class="legend">
+                    <span class="legend-chip overlap-chip">Overlap</span>
+                    <span class="legend-text">Highlighted anime appear in both careers.</span>
+                </div>
+            </header>
+            <div id="timeline" class="timeline"></div>
+        </section>
+
+        <section id="loading" class="loading" hidden>
+            <div class="spinner" aria-hidden="true"></div>
+            <p>Loading voice actor roles...</p>
+        </section>
+    </main>
+
+    <footer class="site-footer">
+        <div class="container">
+            <p>Data from <a href="https://anilist.co/" target="_blank" rel="noopener">AniList</a>. Built as a demo for the <a href="https://github.com/jerryckim16/Anime" target="_blank" rel="noopener">jerryckim16/Anime</a> project.</p>
+        </div>
     </footer>
 
+    <script src="app.js?v=2"></script>
 </body>
 </html>
