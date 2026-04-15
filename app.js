@@ -432,7 +432,7 @@ function renderYearCell(roles, overlapSet, className) {
                         : r.animeTitle,
                     isOverlap ? el("span", { class: "overlap-tag" }, "Overlap") : null,
                 ),
-                el("div", { class: "role-character" }, `as ${r.characterName}`),
+                el("div", { class: "role-character" }, r.characterName),
                 el("div", { class: "role-meta" },
                     `${(r.role || "").toLowerCase()}${r.animeFormat ? " · " + r.animeFormat.replace("_", " ") : ""}`),
             ),
