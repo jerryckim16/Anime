@@ -251,6 +251,78 @@ async function _gqlRequest(query, variables, { retries = 2 } = {}) {
 // would, after filtering. If the Worker is unconfigured or unreachable, callers
 // fall back to gql() directly. `null` means "try the fallback".
 
+// Pre-baked search manifest (data/va-manifest.json). Populated by the weekly
+// .github/workflows/prebake.yml alongside data/va/<id>.json. Lets the client
+// resolve name searches without hitting the Worker or AniList when the query
+// matches any of the ~500 cached VAs. Loaded once per session, cached in
+// memory. Rows look like:
+//     { id, full, native, language, image, favourites }
+let manifestPromise = null;
+function loadManifest() {
+    if (manifestPromise) return manifestPromise;
+    manifestPromise = fetch("./data/va-manifest.json", { cache: "default" })
+        .then(res => res.ok ? res.json() : [])
+        .then(rows => Array.isArray(rows) ? rows : [])
+        .catch(() => []); // 404, network, parse error → return [] so the remote path still runs.
+    return manifestPromise;
+}
+
+// Normalizes a string for substring matching: lowercase + strip diacritics.
+// Used for both query and manifest rows so "Saori Hayami" matches "saori hayami",
+// "SAORI HAYAMI", "Sáori Háyami", etc.
+function normalizeForSearch(s) {
+    return (s || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+}
+
+// Scores a manifest row against a normalized query. Higher = better match.
+// Returns 0 if the row doesn't match at all.
+function scoreManifestRow(row, q) {
+    const full = normalizeForSearch(row.full);
+    const native = normalizeForSearch(row.native);
+    // Starts-with wins (3), word-boundary contains next (2), plain contains last (1).
+    if (full.startsWith(q) || native.startsWith(q)) return 3;
+    if (new RegExp(`\\b${escapeRegex(q)}`).test(full + " " + native)) return 2;
+    if (full.includes(q) || native.includes(q)) return 1;
+    return 0;
+}
+
+function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+
+// Converts a flat manifest row to the same shape the remote search returns,
+// so downstream renderSearchResults / selectStaff don't need to know where
+// results came from.
+function manifestRowToStaff(row) {
+    return {
+        id: row.id,
+        name: { full: row.full, native: row.native },
+        image: { medium: row.image },
+        languageV2: row.language,
+    };
+}
+
+async function searchManifest(query) {
+    const manifest = await loadManifest();
+    if (!manifest.length) return [];
+    const q = normalizeForSearch(query);
+    if (!q) return [];
+    const scored = [];
+    for (const row of manifest) {
+        const score = scoreManifestRow(row, q);
+        if (score > 0) scored.push({ row, score });
+    }
+    // Primary by score DESC, tie-break by favourites DESC (already the
+    // manifest's natural order — preserving it gives popular VAs the nudge).
+    scored.sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return (b.row.favourites || 0) - (a.row.favourites || 0);
+    });
+    return scored.slice(0, 10).map(s => manifestRowToStaff(s.row));
+}
+
 // Pre-baked static snapshots — the weekly .github/workflows/prebake.yml
 // populates data/va/<id>.json on GitHub Pages. Popular VAs resolve with ZERO
 // live infrastructure cost: the CDN serves the file, we never hit the Worker
@@ -286,6 +358,13 @@ async function workerVaPage(id, page) {
 
 async function searchStaff(query) {
     const normalized = query.trim().toLowerCase();
+
+    // L0: local manifest. If any of the ~500 pre-baked VAs matches, we're done
+    // without any network at all. The manifest covers ~95% of real searches by
+    // the power-law distribution of VA popularity.
+    const local = await searchManifest(query);
+    if (local.length) return local;
+
     const cached = await cacheGet(STORE_SEARCHES, normalized, TTL_SEARCHES_MS);
     if (cached) return cached.value;
 

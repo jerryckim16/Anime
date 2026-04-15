@@ -46,3 +46,4 @@ jobs:
                       changes look sensible (mostly new recent-year roles).
                   add-paths: |
                       data/va/*.json
+                      data/va-manifest.json
