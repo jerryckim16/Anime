@@ -25,7 +25,7 @@ query ($id: Int, $page: Int) {
     languageV2
     favourites
     siteUrl
-    characters(perPage: 25, page: $page, sort: [START_DATE_DESC]) {
+    characters(perPage: 25, page: $page, sort: [FAVOURITES_DESC]) {
       pageInfo { hasNextPage currentPage }
       edges {
         role
@@ -110,12 +110,18 @@ async function gql(query, variables) {
         const retryAfter = parseInt(res.headers.get("Retry-After") || "2", 10);
         throw new Error(`Rate limited by AniList. Try again in ${retryAfter}s.`);
     }
+
+    // AniList returns a JSON body with detailed GraphQL errors even on 4xx.
+    // Parse first so we can surface the real message instead of a bare status code.
+    let json = null;
+    try { json = await res.json(); } catch (_) { /* non-JSON body */ }
+
+    if (json && json.errors && json.errors.length) {
+        const msg = json.errors.map(e => e.message).filter(Boolean).join("; ");
+        throw new Error(msg || `AniList GraphQL error (HTTP ${res.status})`);
+    }
     if (!res.ok) {
         throw new Error(`AniList HTTP ${res.status}`);
-    }
-    const json = await res.json();
-    if (json.errors && json.errors.length) {
-        throw new Error(json.errors[0].message || "AniList GraphQL error");
     }
     return json.data;
 }
