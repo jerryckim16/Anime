@@ -633,14 +633,16 @@ function renderTimeline() {
     const timeline = $("#timeline");
     timeline.innerHTML = "";
 
-    // Group roles by year per side
-    const leftByYear = groupByYear(state.left.roles);
-    const rightByYear = groupByYear(state.right.roles);
-
-    // Compute overlap anime IDs (same anime appears in both careers)
+    // Compute overlap anime IDs (same anime appears in both careers).
+    // Done BEFORE grouping so groupByYear can float overlap roles to the top
+    // of each year's list — identical alphabetical order on both sides so the
+    // overlap block lines up side-by-side.
     const leftAnime = new Set(state.left.roles.map(r => r.animeId));
     const rightAnime = new Set(state.right.roles.map(r => r.animeId));
     const overlap = new Set([...leftAnime].filter(id => rightAnime.has(id)));
+
+    const leftByYear = groupByYear(state.left.roles, overlap);
+    const rightByYear = groupByYear(state.right.roles, overlap);
 
     renderOverlapCounter(overlap.size);
 
@@ -676,15 +678,25 @@ function renderOverlapCounter(count) {
     el.hidden = false;
 }
 
-function groupByYear(roles) {
+function groupByYear(roles, overlapSet) {
     const out = {};
     for (const r of roles) {
         if (!out[r.year]) out[r.year] = [];
         out[r.year].push(r);
     }
-    // Sort each year so MAIN roles come first, then alphabetical
+    // Within each year: overlap roles float to the top, alphabetical by anime
+    // title so the left and right cells of the same year align row-by-row.
+    // Non-overlap roles keep the old MAIN → SUPPORTING → BACKGROUND ranking
+    // with alphabetical tie-break.
     for (const year of Object.keys(out)) {
         out[year].sort((a, b) => {
+            const aOverlap = overlapSet.has(a.animeId) ? 0 : 1;
+            const bOverlap = overlapSet.has(b.animeId) ? 0 : 1;
+            if (aOverlap !== bOverlap) return aOverlap - bOverlap;
+            if (aOverlap === 0) {
+                // Both are overlaps — pure alphabetical so left and right match.
+                return (a.animeTitle || "").localeCompare(b.animeTitle || "");
+            }
             const rank = r => r.role === "MAIN" ? 0 : r.role === "SUPPORTING" ? 1 : 2;
             const d = rank(a) - rank(b);
             if (d) return d;
