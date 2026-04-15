@@ -1,11 +1,8 @@
 import json
 import requests
 import secrets
-import os
 
-
-CLIENT_ID = ''
-CLIENT_SECRET = ''
+from secret_script import MAL_CLIENT_ID as CLIENT_ID, MAL_CLIENT_SECRET as CLIENT_SECRET
 
 
 # 1. Generate a new Code Verifier / Code Challenge.
