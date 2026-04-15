@@ -307,7 +307,10 @@ function renderVaCard(panel, { staff, roles }) {
 // ---------- Timeline ----------
 
 function renderTimeline() {
-    if (!state.left || !state.right) return;
+    if (!state.left || !state.right) {
+        $("#overlap-counter").hidden = true;
+        return;
+    }
 
     const section = $("#timeline-section");
     const timeline = $("#timeline");
@@ -321,6 +324,8 @@ function renderTimeline() {
     const leftAnime = new Set(state.left.roles.map(r => r.animeId));
     const rightAnime = new Set(state.right.roles.map(r => r.animeId));
     const overlap = new Set([...leftAnime].filter(id => rightAnime.has(id)));
+
+    renderOverlapCounter(overlap.size);
 
     // Union of all years, descending
     const years = Array.from(new Set([
@@ -345,6 +350,13 @@ function renderTimeline() {
     }
 
     section.hidden = false;
+}
+
+function renderOverlapCounter(count) {
+    const el = $("#overlap-counter");
+    $("#overlap-count").textContent = String(count);
+    el.classList.toggle("zero", count === 0);
+    el.hidden = false;
 }
 
 function groupByYear(roles) {
