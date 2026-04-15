@@ -5,6 +5,13 @@
 
 const ANILIST_URL = "https://graphql.anilist.co";
 
+// Optional: a Cloudflare Worker that sits in front of AniList and provides a
+// shared 24h edge cache. When set (after deploying worker/ to Cloudflare),
+// the client goes through the Worker first, and falls back to AniList direct
+// if the Worker is unreachable. Leave empty to keep today's direct-AniList
+// behavior. See worker/README.md for deploy instructions.
+const WORKER_URL = "";
+
 const SEARCH_QUERY = `
 query ($search: String) {
   Page(perPage: 10) {
@@ -27,7 +34,7 @@ query ($id: Int, $page: Int) {
     languageV2
     favourites
     siteUrl
-    characterMedia(perPage: 25, page: $page, sort: [START_DATE_DESC]) {
+    characterMedia(perPage: 50, page: $page, sort: [START_DATE_DESC]) {
       pageInfo { hasNextPage currentPage }
       edges {
         characterRole
@@ -50,7 +57,7 @@ query ($id: Int, $page: Int) {
   }
 }`;
 
-const MAX_PAGES = 12; // hard cap: ~300 character roles per VA
+const MAX_PAGES = 6; // hard cap: up to 300 character roles per VA (perPage=50)
 
 const state = {
     left: null,   // { staff, roles }
@@ -101,11 +108,93 @@ function setLoading(on) {
     $("#loading").hidden = !on;
 }
 
+// ---------- IndexedDB cache (L1) ----------
+//
+// Stores recently-fetched VA role lists and search results locally so repeat
+// visits hit zero network. AniList voice-actor career data is stable, so long
+// TTLs are safe and dramatically reduce upstream load.
+
+const DB_NAME = "seiyuu-compare";
+const DB_VERSION = 1;
+const STORE_VA_ROLES = "va_roles";  // key: staff id (Number), value: { staff, roles }
+const STORE_SEARCHES = "searches";  // key: normalized query (String), value: results[]
+
+const TTL_VA_ROLES_MS = 7 * 24 * 60 * 60 * 1000;  // 7 days
+const TTL_SEARCHES_MS = 24 * 60 * 60 * 1000;      // 24 hours
+
+let dbPromise = null;
+function openCacheDb() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise((resolve, reject) => {
+        if (typeof indexedDB === "undefined") {
+            return reject(new Error("IndexedDB not available"));
+        }
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = () => {
+            const db = req.result;
+            if (!db.objectStoreNames.contains(STORE_VA_ROLES)) db.createObjectStore(STORE_VA_ROLES);
+            if (!db.objectStoreNames.contains(STORE_SEARCHES)) db.createObjectStore(STORE_SEARCHES);
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    }).catch(err => {
+        // Fall back to no-cache (private browsing, disabled storage, etc.) — never throw.
+        console.warn("IndexedDB unavailable, cache disabled:", err && err.message);
+        return null;
+    });
+    return dbPromise;
+}
+
+async function cacheGet(store, key, ttlMs) {
+    const db = await openCacheDb();
+    if (!db) return null;
+    return new Promise((resolve) => {
+        try {
+            const tx = db.transaction(store, "readonly");
+            const req = tx.objectStore(store).get(key);
+            req.onsuccess = () => {
+                const entry = req.result;
+                if (!entry) return resolve(null);
+                if (Date.now() - entry.fetchedAt > ttlMs) return resolve(null);
+                resolve(entry);
+            };
+            req.onerror = () => resolve(null);
+        } catch (_) { resolve(null); }
+    });
+}
+
+async function cachePut(store, key, value) {
+    const db = await openCacheDb();
+    if (!db) return;
+    return new Promise((resolve) => {
+        try {
+            const tx = db.transaction(store, "readwrite");
+            tx.objectStore(store).put({ value, fetchedAt: Date.now() }, key);
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => resolve();
+        } catch (_) { resolve(); }
+    });
+}
+
 // ---------- AniList ----------
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function gql(query, variables, { retries = 2 } = {}) {
+// In-flight request dedup: collapse concurrent identical queries to a single fetch.
+// Keyed by query+variables; entries are removed when the underlying promise settles.
+const inFlightGql = new Map();
+
+function gql(query, variables, opts = {}) {
+    const key = JSON.stringify({ q: query, v: variables || {} });
+    const existing = inFlightGql.get(key);
+    if (existing) return existing;
+    const promise = _gqlRequest(query, variables, opts)
+        .finally(() => { inFlightGql.delete(key); });
+    inFlightGql.set(key, promise);
+    return promise;
+}
+
+async function _gqlRequest(query, variables, { retries = 2 } = {}) {
     for (let attempt = 0; ; attempt++) {
         let res;
         try {
@@ -158,24 +247,93 @@ async function gql(query, variables, { retries = 2 } = {}) {
     }
 }
 
+// Worker helpers — return the same data shapes as the equivalent AniList calls
+// would, after filtering. If the Worker is unconfigured or unreachable, callers
+// fall back to gql() directly. `null` means "try the fallback".
+
+// Pre-baked static snapshots — the weekly .github/workflows/prebake.yml
+// populates data/va/<id>.json on GitHub Pages. Popular VAs resolve with ZERO
+// live infrastructure cost: the CDN serves the file, we never hit the Worker
+// or AniList. Returns null (and caller falls through) if the file is absent.
+async function prebakedVaFetch(id) {
+    try {
+        const res = await fetch(`./data/va/${id}.json`, { cache: "default" });
+        if (!res.ok) return null;
+        const payload = await res.json();
+        if (!payload || !payload.staff || !Array.isArray(payload.roles)) return null;
+        return payload;
+    } catch (_) { return null; }
+}
+
+async function workerSearch(query) {
+    if (!WORKER_URL) return null;
+    try {
+        const res = await fetch(`${WORKER_URL}/search?q=${encodeURIComponent(query)}`);
+        if (!res.ok) return null;
+        const body = await res.json();
+        return Array.isArray(body.staff) ? body.staff : null;
+    } catch (_) { return null; }
+}
+
+async function workerVaPage(id, page) {
+    if (!WORKER_URL) return null;
+    try {
+        const res = await fetch(`${WORKER_URL}/va/${id}?page=${page}`);
+        if (!res.ok) return null;
+        return await res.json(); // { Staff: {...} }
+    } catch (_) { return null; }
+}
+
 async function searchStaff(query) {
-    const data = await gql(SEARCH_QUERY, { search: query });
-    return data.Page.staff.filter(s =>
-        (s.primaryOccupations || []).some(o => o.toLowerCase().includes("voice"))
-    );
+    const normalized = query.trim().toLowerCase();
+    const cached = await cacheGet(STORE_SEARCHES, normalized, TTL_SEARCHES_MS);
+    if (cached) return cached.value;
+
+    // L2: try the Worker first. It has a shared 24h cache for all users.
+    let results = await workerSearch(query);
+
+    // L3: fall through to AniList direct if the Worker is down / not configured.
+    if (!results) {
+        const data = await gql(SEARCH_QUERY, { search: query });
+        results = data.Page.staff.filter(s =>
+            (s.primaryOccupations || []).some(o => o.toLowerCase().includes("voice"))
+        );
+    }
+
+    cachePut(STORE_SEARCHES, normalized, results).catch(() => {});
+    return results;
 }
 
 async function loadStaffRoles(id) {
+    // L1 cache: return a hit immediately and tag it so the UI can show a "from cache" chip.
+    const cached = await cacheGet(STORE_VA_ROLES, id, TTL_VA_ROLES_MS);
+    if (cached) {
+        return { ...cached.value, cachedAt: cached.fetchedAt };
+    }
+
+    // Pre-baked static snapshot: popular VAs ship as data/va/<id>.json on
+    // GitHub Pages. No network hop to AniList or the Worker on a hit.
+    const prebaked = await prebakedVaFetch(id);
+    if (prebaked) {
+        const result = { staff: prebaked.staff, roles: prebaked.roles };
+        cachePut(STORE_VA_ROLES, id, result).catch(() => {});
+        return result;
+    }
+
     let staff = null;
     const roles = [];
     let page = 1;
     let hasNext = true;
 
-    const PER_PAGE = 25;
+    const PER_PAGE = 50; // matches characterMedia(perPage: 50) in STAFF_QUERY; halves pagination vs prior 25
     const THROTTLE_MS = 700; // keeps us well under AniList's 30 req/min when loading two VAs back-to-back
 
     while (hasNext && page <= MAX_PAGES) {
-        const data = await gql(STAFF_QUERY, { id, page });
+        // L2: try the Worker per-page. Each page cached independently on the
+        // edge, so two users paginating through different VAs share the same
+        // cache for pages they have in common.
+        let data = await workerVaPage(id, page);
+        if (!data) data = await gql(STAFF_QUERY, { id, page });
         const s = data.Staff;
         if (!s) throw new Error(`Voice actor ${id} not found.`);
         if (!staff) staff = {
@@ -228,7 +386,9 @@ async function loadStaffRoles(id) {
         return true;
     });
 
-    return { staff, roles: unique };
+    const result = { staff, roles: unique };
+    cachePut(STORE_VA_ROLES, id, result).catch(() => {});
+    return result;
 }
 
 // ---------- Search UI ----------
@@ -239,19 +399,22 @@ function setupSearchPanel(side) {
     const list = $(".search-results", panel);
 
     const runSearch = debounce(async (query) => {
-        if (!query.trim()) {
+        const trimmed = query.trim();
+        if (trimmed.length < 2) {
+            // Require at least 2 chars before firing an AniList query.
+            // Single-letter searches return noise and waste rate-limit budget.
             list.hidden = true;
             list.innerHTML = "";
             return;
         }
         try {
-            const results = await searchStaff(query.trim());
+            const results = await searchStaff(trimmed);
             renderSearchResults(list, results, side);
         } catch (err) {
             console.error(err);
             showError(err.message);
         }
-    }, 300);
+    }, 450);
 
     input.addEventListener("input", e => runSearch(e.target.value));
     input.addEventListener("focus", () => {
@@ -314,7 +477,8 @@ async function selectStaff(side, id) {
     }
 }
 
-function renderVaCard(panel, { staff, roles }) {
+function renderVaCard(panel, data) {
+    const { staff, roles, cachedAt } = data;
     const card = $(".va-card", panel);
     card.className = "va-card";
     card.innerHTML = "";
@@ -328,7 +492,13 @@ function renderVaCard(panel, { staff, roles }) {
         alt: staff.name.full,
     }));
     card.appendChild(el("div", { class: "va-meta" },
-        el("div", { class: "va-name" }, staff.name.full),
+        el("div", { class: "va-name-row" },
+            el("span", { class: "va-name" }, staff.name.full),
+            cachedAt ? el("span", {
+                class: "cache-chip",
+                title: `Loaded from local cache, fetched ${new Date(cachedAt).toLocaleString()}`,
+            }, `cached · ${formatAgo(cachedAt)}`) : null,
+        ),
         staff.name.native ? el("div", { class: "va-native" }, staff.name.native) : null,
         el("div", { class: "va-stats" },
             `${animeCount} anime · ${charCount} characters` +
@@ -340,6 +510,14 @@ function renderVaCard(panel, { staff, roles }) {
             rel: "noopener",
         }, "View on AniList") : null,
     ));
+}
+
+function formatAgo(ts) {
+    const sec = Math.max(0, (Date.now() - ts) / 1000);
+    if (sec < 60) return "just now";
+    if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
+    if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
+    return `${Math.floor(sec / 86400)}d ago`;
 }
 
 // ---------- Timeline ----------

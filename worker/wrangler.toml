@@ -1,0 +1,18 @@
+name = "seiyuu-compare-cache"
+main = "index.js"
+compatibility_date = "2024-11-01"
+
+# Default vars (override per environment as needed)
+[vars]
+# Restrict CORS to your deployed site. Use "*" during local dev.
+# Accepts a single origin or a comma-separated list.
+ALLOWED_ORIGIN = "https://jerryckim16.github.io"
+
+# Fresh window (seconds). Within this window, responses come straight from cache.
+CACHE_TTL_SECONDS = "86400"
+
+# Stale-while-revalidate window (seconds). After TTL, serve stale and refresh in background.
+CACHE_SWR_SECONDS = "604800"
+
+# Optional: set ANILIST_APP_TOKEN via `wrangler secret put ANILIST_APP_TOKEN`
+# to use an OAuth app token (higher rate limits than anonymous).

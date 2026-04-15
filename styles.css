@@ -224,7 +224,21 @@ a:hover { text-decoration: underline; }
     background: var(--bg-3);
 }
 .va-meta { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
+.va-name-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .va-name { font-size: 1.15rem; font-weight: 700; color: var(--text-0); }
+.cache-chip {
+    display: inline-block;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    background: rgba(167, 139, 250, 0.15);
+    border: 1px solid rgba(167, 139, 250, 0.35);
+    color: var(--accent);
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: lowercase;
+    letter-spacing: 0.03em;
+    cursor: help;
+}
 .va-native { color: var(--text-2); font-size: 0.9rem; }
 .va-stats { color: var(--text-1); font-size: 0.85rem; margin-top: 0.3rem; }
 .va-link {
