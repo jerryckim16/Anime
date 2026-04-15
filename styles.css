@@ -232,6 +232,44 @@ a:hover { text-decoration: underline; }
     font-size: 0.85rem;
 }
 
+/* Overlap counter */
+.overlap-counter {
+    display: flex;
+    justify-content: center;
+    margin: 0 0 2rem;
+}
+.overlap-counter-inner {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    padding: 1rem 1.75rem;
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(167, 139, 250, 0.08));
+    border: 1px solid var(--overlap);
+    border-radius: var(--radius);
+    box-shadow: 0 0 24px var(--overlap-glow);
+}
+.overlap-counter-number {
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: var(--overlap);
+    line-height: 1;
+}
+.overlap-counter-label {
+    color: var(--text-1);
+    font-size: 1rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+.overlap-counter.zero .overlap-counter-inner {
+    border-color: var(--border);
+    box-shadow: none;
+    background: var(--bg-1);
+}
+.overlap-counter.zero .overlap-counter-number {
+    color: var(--text-2);
+}
+
 /* Timeline */
 .timeline-section {
     margin: 2.5rem 0 4rem;

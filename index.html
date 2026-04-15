@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Seiyuu Compare · Anime Voice Actor Timeline</title>
     <meta name="description" content="Search and compare anime voice actors. Visualize their careers on a timeline and spot where two seiyuu crossed paths.">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
     <header class="site-header">
@@ -62,6 +62,13 @@
                     <p class="empty-text">No voice actor selected yet.</p>
                 </div>
             </article>
+        </section>
+
+        <section id="overlap-counter" class="overlap-counter" hidden>
+            <div class="overlap-counter-inner">
+                <span class="overlap-counter-number" id="overlap-count">0</span>
+                <span class="overlap-counter-label">anime in common</span>
+            </div>
         </section>
 
         <section id="timeline-section" class="timeline-section" hidden>
