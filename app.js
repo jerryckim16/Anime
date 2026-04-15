@@ -107,14 +107,30 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function gql(query, variables, { retries = 2 } = {}) {
     for (let attempt = 0; ; attempt++) {
-        const res = await fetch(ANILIST_URL, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-            body: JSON.stringify({ query, variables }),
-        });
+        let res;
+        try {
+            res = await fetch(ANILIST_URL, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                body: JSON.stringify({ query, variables }),
+            });
+        } catch (err) {
+            // fetch() rejects with a bare TypeError ("Failed to fetch") on
+            // network-level failures: throttled connection, DNS miss, ad
+            // blocker, AniList briefly down, etc. Back off and retry; only
+            // after all retries are exhausted do we surface a readable error.
+            if (attempt < retries) {
+                await sleep(1500 * (attempt + 1));
+                continue;
+            }
+            throw new Error(
+                "Couldn't reach AniList. It's usually rate-limiting or briefly " +
+                "unavailable — wait ~30 seconds and try again."
+            );
+        }
 
         // Honor AniList's rate limit: retry after Retry-After seconds before surfacing the error.
         if (res.status === 429 && attempt < retries) {
