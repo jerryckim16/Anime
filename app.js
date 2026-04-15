@@ -121,7 +121,12 @@ function setLoading(on) {
 // TTLs are safe and dramatically reduce upstream load.
 
 const DB_NAME = "seiyuu-compare";
-const DB_VERSION = 1;
+// Bump this whenever the cached-payload shape changes in a way that makes
+// existing entries stale. v2 drops entries written by the old 6-page-capped
+// code path so users don't stay stuck on the last-300-roles snapshot of a
+// prolific seiyuu. The onupgradeneeded handler below wipes both stores on
+// upgrade.
+const DB_VERSION = 2;
 const STORE_VA_ROLES = "va_roles";  // key: staff id (Number), value: { staff, roles }
 const STORE_SEARCHES = "searches";  // key: normalized query (String), value: results[]
 
@@ -138,8 +143,13 @@ function openCacheDb() {
         const req = indexedDB.open(DB_NAME, DB_VERSION);
         req.onupgradeneeded = () => {
             const db = req.result;
-            if (!db.objectStoreNames.contains(STORE_VA_ROLES)) db.createObjectStore(STORE_VA_ROLES);
-            if (!db.objectStoreNames.contains(STORE_SEARCHES)) db.createObjectStore(STORE_SEARCHES);
+            // Any existing store from an older schema holds payloads that may
+            // have been truncated by the previous 6-page pagination cap.
+            // Nuke and recreate so the first access after upgrade refetches.
+            if (db.objectStoreNames.contains(STORE_VA_ROLES)) db.deleteObjectStore(STORE_VA_ROLES);
+            if (db.objectStoreNames.contains(STORE_SEARCHES)) db.deleteObjectStore(STORE_SEARCHES);
+            db.createObjectStore(STORE_VA_ROLES);
+            db.createObjectStore(STORE_SEARCHES);
         };
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
