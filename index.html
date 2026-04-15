@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Seiyuu Compare · Anime Voice Actor Timeline</title>
     <meta name="description" content="Search and compare anime voice actors. Visualize their careers on a timeline and spot where two seiyuu crossed paths.">
-    <link rel="stylesheet" href="styles.css?v=15">
+    <link rel="stylesheet" href="styles.css?v=16">
 </head>
 <body>
     <header class="site-header">
@@ -74,9 +74,14 @@
         <section id="timeline-section" class="timeline-section" hidden>
             <header class="timeline-head">
                 <h2>Career Timeline</h2>
-                <div class="legend">
-                    <span class="legend-chip overlap-chip">Overlap</span>
-                    <span class="legend-text">Highlighted anime appear in both careers.</span>
+                <div class="timeline-head-right">
+                    <div class="legend">
+                        <span class="legend-chip overlap-chip">Overlap</span>
+                        <span class="legend-text">Highlighted anime appear in both careers.</span>
+                    </div>
+                    <button id="overlap-filter" class="overlap-filter" type="button" aria-pressed="false">
+                        Show only overlap
+                    </button>
                 </div>
             </header>
             <div id="timeline" class="timeline"></div>
@@ -94,6 +99,6 @@
         </div>
     </footer>
 
-    <script src="app.js?v=15"></script>
+    <script src="app.js?v=16"></script>
 </body>
 </html>

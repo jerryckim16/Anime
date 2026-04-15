@@ -69,6 +69,7 @@ const state = {
     left: null,   // { staff, roles }
     right: null,
     loading: false,
+    overlapOnly: false, // timeline filter: when true, hide every non-overlap role
 };
 
 // ---------- Utilities ----------
@@ -641,8 +642,18 @@ function renderTimeline() {
     const rightAnime = new Set(state.right.roles.map(r => r.animeId));
     const overlap = new Set([...leftAnime].filter(id => rightAnime.has(id)));
 
-    const leftByYear = groupByYear(state.left.roles, overlap);
-    const rightByYear = groupByYear(state.right.roles, overlap);
+    // When the filter is on, drop every non-overlap role up front. Overlap is
+    // computed first on the FULL role lists so toggling the filter can't change
+    // which anime count as overlaps.
+    const leftRoles = state.overlapOnly
+        ? state.left.roles.filter(r => overlap.has(r.animeId))
+        : state.left.roles;
+    const rightRoles = state.overlapOnly
+        ? state.right.roles.filter(r => overlap.has(r.animeId))
+        : state.right.roles;
+
+    const leftByYear = groupByYear(leftRoles, overlap);
+    const rightByYear = groupByYear(rightRoles, overlap);
 
     renderOverlapCounter(overlap.size);
 
@@ -653,8 +664,10 @@ function renderTimeline() {
     ])).map(Number).sort((a, b) => b - a);
 
     if (!years.length) {
-        timeline.appendChild(el("p", { class: "year-cell-empty" },
-            "Neither voice actor has dated anime credits."));
+        const msg = state.overlapOnly
+            ? "No overlapping anime found between these two voice actors."
+            : "Neither voice actor has dated anime credits.";
+        timeline.appendChild(el("p", { class: "year-cell-empty" }, msg));
         section.hidden = false;
         return;
     }
@@ -669,6 +682,17 @@ function renderTimeline() {
     }
 
     section.hidden = false;
+}
+
+function setupOverlapFilter() {
+    const btn = $("#overlap-filter");
+    if (!btn) return;
+    btn.addEventListener("click", () => {
+        state.overlapOnly = !state.overlapOnly;
+        btn.setAttribute("aria-pressed", String(state.overlapOnly));
+        btn.textContent = state.overlapOnly ? "Show all anime" : "Show only overlap";
+        renderTimeline();
+    });
 }
 
 function renderOverlapCounter(count) {
@@ -754,4 +778,5 @@ function loadFromHash() {
 
 setupSearchPanel("left");
 setupSearchPanel("right");
+setupOverlapFilter();
 loadFromHash();

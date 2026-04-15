@@ -323,6 +323,35 @@ a:hover { text-decoration: underline; }
     color: #2a1a00;
 }
 
+.timeline-head-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+.overlap-filter {
+    padding: 0.45rem 0.9rem;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-1);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+}
+.overlap-filter:hover {
+    border-color: var(--overlap);
+    color: var(--text-0);
+}
+.overlap-filter[aria-pressed="true"] {
+    background: var(--overlap);
+    border-color: var(--overlap);
+    color: #2a1a00;
+    box-shadow: 0 0 12px var(--overlap-glow);
+}
+
 .timeline {
     display: flex;
     flex-direction: column;
