@@ -25,18 +25,22 @@ query ($id: Int, $page: Int) {
     languageV2
     favourites
     siteUrl
-    characters(perPage: 25, page: $page, sort: [FAVOURITES_DESC]) {
+    characterMedia(perPage: 25, page: $page, sort: [START_DATE_DESC], type: ANIME) {
       pageInfo { hasNextPage currentPage }
       edges {
-        role
-        node { id name { full } image { medium } }
-        media(sort: [START_DATE_DESC], type: ANIME) {
+        characterRole
+        characters {
           id
+          name { full }
+          image { medium }
+        }
+        node {
+          id
+          format
           title { romaji english }
           startDate { year }
           coverImage { medium }
           siteUrl
-          format
         }
       }
     }
@@ -152,10 +156,12 @@ async function loadStaffRoles(id) {
             siteUrl: s.siteUrl,
         };
 
-        for (const edge of s.characters.edges) {
-            const character = edge.node;
-            for (const media of edge.media || []) {
-                if (!media || !media.startDate || !media.startDate.year) continue;
+        for (const edge of s.characterMedia.edges) {
+            const media = edge.node;
+            if (!media || !media.startDate || !media.startDate.year) continue;
+            const characters = edge.characters || [];
+            if (!characters.length) continue;
+            for (const character of characters) {
                 roles.push({
                     year: media.startDate.year,
                     animeId: media.id,
@@ -165,11 +171,11 @@ async function loadStaffRoles(id) {
                     animeFormat: media.format,
                     characterName: character.name.full,
                     characterImage: character.image && character.image.medium,
-                    role: edge.role, // MAIN | SUPPORTING | BACKGROUND
+                    role: edge.characterRole, // MAIN | SUPPORTING | BACKGROUND
                 });
             }
         }
-        hasNext = s.characters.pageInfo.hasNextPage;
+        hasNext = s.characterMedia.pageInfo.hasNextPage;
         page += 1;
     }
 
