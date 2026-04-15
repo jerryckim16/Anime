@@ -25,7 +25,7 @@ query ($id: Int, $page: Int) {
     languageV2
     favourites
     siteUrl
-    characterMedia(perPage: 25, page: $page, sort: [START_DATE_DESC], type: ANIME) {
+    characterMedia(perPage: 25, page: $page, sort: [START_DATE_DESC]) {
       pageInfo { hasNextPage currentPage }
       edges {
         characterRole
@@ -36,6 +36,7 @@ query ($id: Int, $page: Int) {
         }
         node {
           id
+          type
           format
           title { romaji english }
           startDate { year }
@@ -158,7 +159,8 @@ async function loadStaffRoles(id) {
 
         for (const edge of s.characterMedia.edges) {
             const media = edge.node;
-            if (!media || !media.startDate || !media.startDate.year) continue;
+            if (!media || media.type !== "ANIME") continue;
+            if (!media.startDate || !media.startDate.year) continue;
             const characters = edge.characters || [];
             if (!characters.length) continue;
             for (const character of characters) {
