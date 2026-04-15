@@ -19,8 +19,7 @@
 // Tuning knobs (via env):
 //   ANILIST_APP_TOKEN — optional bearer token for higher rate limits
 //   TOP_N              — how many voice actors to enumerate by favourites (default 500)
-//   PER_PAGE           — page size (default 50, AniList max)
-//   MAX_PAGES          — hard safety cap per VA (default 40 → 2000 roles; paginate until hasNextPage=false)
+//   MAX_PAGES          — hard safety cap per VA (default 40 → 1000 roles; paginate until hasNextPage=false)
 //   THROTTLE_MS        — inter-request delay (default 1500 to stay well below the 30 req/min degraded limit)
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
@@ -35,11 +34,15 @@ const MANIFEST_FILE = resolve(REPO_ROOT, "data/va-manifest.json");
 
 const ANILIST_URL = "https://graphql.anilist.co";
 const TOP_N = parseInt(process.env.TOP_N || "500", 10);
-const PER_PAGE = parseInt(process.env.PER_PAGE || "50", 10);
+// Page.staff accepts perPage up to 50. AniList's Staff.characterMedia
+// silently caps at 25 — asking for 50 still returns 25 but advances offset
+// by 50, so we'd skip edges [25..49] on page 2. Use 25 for characterMedia.
+const ENUM_PER_PAGE = 50;
+const MEDIA_PER_PAGE = 25;
 // Intentionally generous: the prebake walks the entire career, relying on
 // AniList's pageInfo.hasNextPage. MAX_PAGES is a runaway-loop safety net only.
 // Even the most prolific seiyuu (Tomokazu Sugita, Houko Kuwashima) are well
-// under 2000 character roles.
+// under 1000 character roles.
 const MAX_PAGES = parseInt(process.env.MAX_PAGES || "40", 10);
 const THROTTLE_MS = parseInt(process.env.THROTTLE_MS || "1500", 10);
 
@@ -136,7 +139,7 @@ async function enumeratePopularVoiceActors(target) {
     let page = 1;
     while (rows.length < target) {
         process.stdout.write(`enum page ${page} ... `);
-        const data = await gql(STAFF_LIST_QUERY, { page, perPage: PER_PAGE });
+        const data = await gql(STAFF_LIST_QUERY, { page, perPage: ENUM_PER_PAGE });
         const staff = data?.Page?.staff || [];
         const pageInfo = data?.Page?.pageInfo || {};
         let added = 0;
@@ -173,7 +176,7 @@ async function fetchVa(id) {
     let hasNext = true;
 
     while (hasNext && page <= MAX_PAGES) {
-        const data = await gql(STAFF_QUERY, { id, page, perPage: PER_PAGE });
+        const data = await gql(STAFF_QUERY, { id, page, perPage: MEDIA_PER_PAGE });
         const s = data.Staff;
         if (!s) throw new Error(`Staff ${id} not found`);
         if (!staff) {

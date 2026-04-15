@@ -52,7 +52,7 @@ query ($id: Int, $page: Int) {
     languageV2
     favourites
     siteUrl
-    characterMedia(perPage: 50, page: $page, sort: [START_DATE_DESC]) {
+    characterMedia(perPage: 25, page: $page, sort: [START_DATE_DESC]) {
       pageInfo { hasNextPage currentPage }
       edges {
         characterRole

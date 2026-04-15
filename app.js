@@ -34,7 +34,7 @@ query ($id: Int, $page: Int) {
     languageV2
     favourites
     siteUrl
-    characterMedia(perPage: 50, page: $page, sort: [START_DATE_DESC]) {
+    characterMedia(perPage: 25, page: $page, sort: [START_DATE_DESC]) {
       pageInfo { hasNextPage currentPage }
       edges {
         characterRole
@@ -122,11 +122,12 @@ function setLoading(on) {
 
 const DB_NAME = "seiyuu-compare";
 // Bump this whenever the cached-payload shape changes in a way that makes
-// existing entries stale. v2 drops entries written by the old 6-page-capped
-// code path so users don't stay stuck on the last-300-roles snapshot of a
-// prolific seiyuu. The onupgradeneeded handler below wipes both stores on
-// upgrade.
-const DB_VERSION = 2;
+// existing entries stale. Previous bumps:
+//   v2: wipe 6-page (300-role) truncated entries
+//   v3: wipe 25-role entries caused by the edges.length>=PER_PAGE short-circuit
+//       firing against AniList's silent perPage=25 cap on characterMedia
+// The onupgradeneeded handler below wipes both stores on any upgrade.
+const DB_VERSION = 3;
 const STORE_VA_ROLES = "va_roles";  // key: staff id (Number), value: { staff, roles }
 const STORE_SEARCHES = "searches";  // key: normalized query (String), value: results[]
 
@@ -420,7 +421,10 @@ async function loadStaffRoles(id) {
     let page = 1;
     let hasNext = true;
 
-    const PER_PAGE = 50; // matches characterMedia(perPage: 50) in STAFF_QUERY; halves pagination vs prior 25
+    // AniList's characterMedia silently caps perPage at 25 regardless of what
+    // you ask for. Asking for 50 still returns 25 AND advances the offset by
+    // 50 on page 2, which would skip edges [25..49] entirely. Match the cap.
+    const PER_PAGE = 25;
     const THROTTLE_MS = 700; // keeps us well under AniList's 30 req/min when loading two VAs back-to-back
 
     while (hasNext && page <= MAX_PAGES) {
@@ -462,11 +466,13 @@ async function loadStaffRoles(id) {
             }
         }
 
-        // Stop as soon as AniList signals no more pages OR the current page came back short.
-        // Short-circuiting on short pages halves request count for most VAs and prevents
-        // rate-limit failures when the second voice actor is picked.
+        // Rely on AniList's canonical hasNextPage. An older version of this
+        // code also short-circuited when edges.length < PER_PAGE to save rate
+        // budget, but that interacted badly with AniList silently capping
+        // characterMedia at perPage=25 and caused every VA to truncate to
+        // exactly 25 roles.
         const pageInfo = (s.characterMedia && s.characterMedia.pageInfo) || {};
-        hasNext = !!pageInfo.hasNextPage && edges.length >= PER_PAGE;
+        hasNext = !!pageInfo.hasNextPage;
         page += 1;
 
         if (hasNext) await sleep(THROTTLE_MS);
